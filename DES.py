@@ -2,8 +2,6 @@ from DESCommon import DES_CUSTOM, generate_keys
 from DESUtil import to_binary, add_pads_if_necessary, hex_to_bin, bin_to_hex, bin_to_text
 from Crypto.Cipher import DES
 import itertools
-
-
 import base64
  
 # CONVERSION FUNCTIONS
@@ -115,10 +113,6 @@ def decrypt(cipher, key_text):
 		i = i+8
 	return text_mess.rstrip('\x00')
 
-
-def pad(text):
-    n = len(text) % 32
-    return text + (b'\x00' * n)
 
 def main():
 
