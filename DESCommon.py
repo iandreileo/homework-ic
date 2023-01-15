@@ -4,8 +4,9 @@ from DESUtil import get_column, get_row, to_binary, left_shift
 
 
 def apply_IP(block):
-    """input permutaion
-    """
+    # Functia de permutare initiala de care avem nevoie in DES
+    # Bazat pe algoritmu si pe poza de pe Wiki
+    # https://en.wikipedia.org/wiki/File:DES-main-network.png
     r = []
     r.extend(block)
     for i in range(0, 64):
@@ -14,8 +15,9 @@ def apply_IP(block):
 
 
 def apply_FP(block):
-    """final permutaion
-    """
+    # Functia de permutare finala de care avem nevoie in DES
+    # Bazat pe algoritmu si pe poza de pe Wiki
+    # https://en.wikipedia.org/wiki/File:DES-main-network.png
     r = []
     r.extend(block)
     for i in range(0, 64):
@@ -24,9 +26,9 @@ def apply_FP(block):
 
 
 def e_box(block):
-    """exapansion permutation to expand 32 bit block into 48 bit block
-       also called E-box
-    """
+    # Primul pas din functia F din algoritmul DES
+    # Este de a face extensie a Ri la cat este sub-cheia (48)
+    # https://en.wikipedia.org/wiki/File:DES-f-function.png
     dummy = []
     for i in range(48):
         dummy.append(block[E[i]])
@@ -39,8 +41,11 @@ def e_box(block):
 
 
 def s_box(block):
-    """s-box function to reduce 48 bit block to 32 bit block
-    """
+    # SBOX este o functie noninversabila
+    # Acesta este ca un tabel unde ai valorile pentru fiecare
+    # Acest SBOX da puterea algoritmului pentru ca e nereversibila
+    # Se aplica dupa ce se face XOR in F
+    # https://en.wikipedia.org/wiki/File:DES-f-function.png
     for i in range(0, 8):
         row = str(block[i][0]) + str(block[i][-1])
         column = ''
@@ -57,8 +62,8 @@ def s_box(block):
 
 
 def p_box(block):
-    """p-box permutation
-    """
+    # O functie clasica de permutare pe care o folosim in F
+    # https://en.wikipedia.org/wiki/File:DES-f-function.png
     r = []
     r.extend(block)
     for i in range(32):
@@ -67,17 +72,31 @@ def p_box(block):
 
 
 def iterate(left_block, right_block, keys, CIPHERS_FOR_EACH_ROUND):
-    """iterating  for the 16 rounds
-    """
+    # Functie prin care aplicam tot algoritmul DES
+    # In 16 runde
+    # Conform https://en.wikipedia.org/wiki/File:DES-main-network.png
+    # Si anume pentru fiecare runda 
     for j in range(0, 16):
+
+        # Aici incepe aplicarea functiei F
+        # Care este un use-case al Feistel
+        # https://en.wikipedia.org/wiki/Feistel_cipher#/media/File:Feistel_cipher_diagram_en.svg
+        
+        # Aplicam extinderea la 48 de biti pentru Ri
         d9 = []
         d9.extend(right_block)
         right_block = e_box(right_block)
+
+        # Aplicam XOR intre Ri si cheie
         for i in range(0, 8):
             di = i * 6
             for k in range(0, 6):
                 right_block[i][k] ^= keys[j][di + k]
+
+        # Aplicam SBOX conform algoritmului
         right_block = s_box(right_block)
+
+        # Aplicam permutarea
         right_block = p_box(right_block)
         for i in range(0, 32):
             right_block[i] ^= left_block[i]
@@ -94,23 +113,28 @@ def iterate(left_block, right_block, keys, CIPHERS_FOR_EACH_ROUND):
 
 
 def DES_CUSTOM(text_bits, start, end, keys, CIPHERS_FOR_EACH_ROUND=None):
-    """Heart of the program : DES algorithm
-    """
+    # Aici vom aplica complet algoritmul DES
+    # https://en.wikipedia.org/wiki/File:DES-main-network.png
+
     block = []
     for i in range(start, end):
         block.append(text_bits[i])
 
+    # Aplicam permutarea initiala
     block = apply_IP(block)
 
+    # Impartim in Li si Ri
     left_block = block[0:32]
     right_block = block[32:64]
 
+    # Aplicam cele 16 runde
     left_block, right_block = iterate(left_block, right_block, keys, CIPHERS_FOR_EACH_ROUND)
 
     block = []
     block.extend(right_block)
     block.extend(left_block)
 
+    # Aplicam permutarea finala
     block = apply_FP(block)
 
     cipher_block = ''
@@ -120,8 +144,8 @@ def DES_CUSTOM(text_bits, start, end, keys, CIPHERS_FOR_EACH_ROUND=None):
 
 
 def generate_keys(key_text):
-    """ key generation
-    """
+    # Functie prin care generam cheile
+    # Pentru ca pentru fiecare runda avem nevoie de alta cheie
     key = []
     for i in key_text:
         key.extend(to_binary(ord(i)))
@@ -129,6 +153,10 @@ def generate_keys(key_text):
     C = []
     D = []
     r = []
+
+    # Acesta functie a fost gandita pe baza acestei explicatii
+    # https://www.tutorialspoint.com/what-are-the-following-steps-for-the-key-generation-of-des-in-information-security
+    # Prin shiftarea blockurilor
     for i in range(28):
         C.append(key[PC1_C[i]])
     for i in range(28):

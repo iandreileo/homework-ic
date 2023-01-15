@@ -71,6 +71,7 @@ def get_bits(plaintext):
         text_bits.extend(to_binary(ord(i)))
     return text_bits
 
+
 def encrypt(plaintext, key_text):
 	keys = generate_keys(key_text)
 
@@ -118,6 +119,8 @@ def main():
 
 	ATTACK_SPACE = 18
 
+	# Keyle sa fie mai mici decat 2 ^ attckspace
+
 	key1 = b'\x05\x03\x01\x00\x00\x00\x00\x00'
 	key2 = b'\x06\x04\x02\x00\x00\x00\x00\x00'
 	plaintext = 'Hello world! :-)'
@@ -126,6 +129,12 @@ def main():
 	print(cipher)
 
 	table = {}
+
+	# La 2DES vrei sa iti cresti space-ul
+	# La vremea aia asa era
+	# Outputul de la 1 merge in a 2-a
+	# Ce decrpitezi la dreapta e outputul de la stanga
+	# Daca iterezi si gasesti punctul in care sunt egale, ai spart algoritmul
 
 	print("Creating table for k1...")
 	for i in itertools.count(0):
