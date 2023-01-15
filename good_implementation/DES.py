@@ -1,2 +1,0 @@
-
-class DES_CUSTOM:

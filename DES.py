@@ -1,69 +1,186 @@
-from DESCommon import DES_CUSTOM, generate_keys
-from DESUtil import to_binary, add_pads_if_necessary, hex_to_bin, bin_to_hex, bin_to_text
-from Crypto.Cipher import DES
-import itertools
-import base64
- 
-# CONVERSION FUNCTIONS
-def _chunks(string, chunk_size):
-    for i in range(0, len(string), chunk_size):
-        yield string[i:i+chunk_size]
- 
-def byte_2_bin(bval):
-    """
-      Transform a byte (8-bit) value into a bitstring
-    """
-    return bin(bval)[2:].zfill(8)
- 
-def _hex(x):
-    return format(x, '02x')
- 
-def hex_2_bin(data):
-    return ''.join(f'{int(x, 16):08b}' for x in _chunks(data, 2))
- 
-def str_2_bin(data):
-    return ''.join(f'{ord(c):08b}' for c in data)
- 
-def bin_2_hex(data):
-    return ''.join(f'{int(b, 2):02x}' for b in _chunks(data, 8))
- 
-def str_2_hex(data):
-    return ''.join(f'{ord(c):02x}' for c in data)
- 
-def bin_2_str(data):
-    return ''.join(chr(int(b, 2)) for b in _chunks(data, 8))
- 
-def hex_2_str(data):
-    return ''.join(chr(int(x, 16)) for x in _chunks(data, 2))
- 
-# XOR FUNCTIONS
-def strxor(a, b):  # xor two strings, trims the longer input
-    return ''.join(chr(ord(x) ^ ord(y)) for (x, y) in zip(a, b))
- 
-def bitxor(a, b):  # xor two bit-strings, trims the longer input
-    return ''.join(str(int(x) ^ int(y)) for (x, y) in zip(a, b))
- 
-def hexxor(a, b):  # xor two hex-strings, trims the longer input
-    return ''.join(_hex(int(x, 16) ^ int(y, 16)) for (x, y) in zip(_chunks(a, 2), _chunks(b, 2)))
- 
-# BASE64 FUNCTIONS
-def b64decode(data):
-    return bytes_to_string(base64.b64decode(string_to_bytes(data)))
- 
-def b64encode(data):
-    return bytes_to_string(base64.b64encode(string_to_bytes(data)))
- 
-# PYTHON3 'BYTES' FUNCTIONS
-def bytes_to_string(bytes_data):
-    return bytes_data.decode()  # default utf-8
- 
-def string_to_bytes(string_data):
-    return string_data.encode()  # default utf-8
+from DESUtil import bin_2_str, bytes_to_string, to_binary, add_pads_if_necessary, hex_to_bin, bin_to_hex, get_column, get_row, to_binary, left_shift
+from DESConstant import *
 
-try:
-    input = raw_input
-except NameError:
-    pass
+# FUNCTII NECESARE PENTRU ALGORITMUL DES
+
+def apply_IP(block):
+    # Functia de permutare initiala de care avem nevoie in DES
+    # Bazat pe algoritmu si pe poza de pe Wiki
+    # https://en.wikipedia.org/wiki/File:DES-main-network.png
+    r = []
+    r.extend(block)
+    for i in range(0, 64):
+        r[i] = block[IP[i]]
+    return r
+
+
+def apply_FP(block):
+    # Functia de permutare finala de care avem nevoie in DES
+    # Bazat pe algoritmu si pe poza de pe Wiki
+    # https://en.wikipedia.org/wiki/File:DES-main-network.png
+    r = []
+    r.extend(block)
+    for i in range(0, 64):
+        r[i] = block[(FP[i])]
+    return r
+
+# / FUNCTII NECESARE PENTRU ALGORITMUL DES
+
+
+# FUNCTII NECESARE PENTRU CALCULUL F - FEISTEL
+
+def e_box(block):
+    # Primul pas din functia F din algoritmul DES
+    # Este de a face extensie a Ri la cat este sub-cheia (48)
+    # https://en.wikipedia.org/wiki/File:DES-f-function.png
+    dummy = []
+    for i in range(48):
+        dummy.append(block[E[i]])
+
+    r = []
+    for i in range(0, 48, 6):
+        j = i + 6
+        r.append(dummy[i:j])
+    return r
+
+
+def s_box(block):
+    # SBOX este o functie noninversabila
+    # Acesta este ca un tabel unde ai valorile pentru fiecare
+    # Acest SBOX da puterea algoritmului pentru ca e nereversibila
+    # Se aplica dupa ce se face XOR in F
+    # https://en.wikipedia.org/wiki/File:DES-f-function.png
+    for i in range(0, 8):
+        row = str(block[i][0]) + str(block[i][-1])
+        column = ''
+        for j in range(1, 5):
+            column += str(block[i][j])
+        a = 16 * get_row(row)
+        a += get_column(column)
+        block.pop(i)
+        block.insert(i, to_binary(ord(chr(s[i][a]))))
+    r = []
+    for i in block:
+        r.extend(i[4:8])
+    return r
+
+
+def p_box(block):
+    # O functie clasica de permutare pe care o folosim in F
+    # https://en.wikipedia.org/wiki/File:DES-f-function.png
+    r = []
+    r.extend(block)
+    for i in range(32):
+        r[i] = block[P[i]]
+    return r
+
+# / FUNCTII NECESARE PENTRU CALCULUL F - FEISTEL
+
+
+def iterate(left_block, right_block, keys):
+    # Functie prin care aplicam tot algoritmul DES
+    # In 16 runde
+    # Conform https://en.wikipedia.org/wiki/File:DES-main-network.png
+    # Si anume pentru fiecare runda 
+    for j in range(0, 16):
+
+        # Aici incepe aplicarea functiei F
+        # Care este un use-case al Feistel
+        # https://en.wikipedia.org/wiki/Feistel_cipher#/media/File:Feistel_cipher_diagram_en.svg
+        
+        # Aplicam extinderea la 48 de biti pentru Ri
+        d9 = []
+        d9.extend(right_block)
+        right_block = e_box(right_block)
+
+        # Aplicam XOR intre Ri si cheie
+        for i in range(0, 8):
+            di = i * 6
+            for k in range(0, 6):
+                right_block[i][k] ^= keys[j][di + k]
+
+        # Aplicam SBOX conform algoritmului
+        right_block = s_box(right_block)
+
+        # Aplicam permutarea
+        right_block = p_box(right_block)
+        for i in range(0, 32):
+            right_block[i] ^= left_block[i]
+
+        left_block = []
+        left_block.extend(d9)
+
+    return left_block, right_block
+
+
+def DES_CUSTOM(text_bits, start, end, keys):
+    # Aici vom aplica complet algoritmul DES
+    # https://en.wikipedia.org/wiki/File:DES-main-network.png
+
+    block = []
+    for i in range(start, end):
+        block.append(text_bits[i])
+
+    # Aplicam permutarea initiala
+    block = apply_IP(block)
+
+    # Impartim in Li si Ri
+    left_block = block[0:32]
+    right_block = block[32:64]
+
+    # Aplicam cele 16 runde
+    left_block, right_block = iterate(left_block, right_block, keys)
+
+    block = []
+    block.extend(right_block)
+    block.extend(left_block)
+
+    # Aplicam permutarea finala
+    block = apply_FP(block)
+
+    cipher_block = ''
+    for i in block:
+        cipher_block += str(i)
+    return cipher_block
+
+
+def generate_keys(key_text):
+    # Functie prin care generam cheile
+    # Pentru ca pentru fiecare runda avem nevoie de alta cheie
+    key = []
+    for i in key_text:
+        key.extend(to_binary(ord(i)))
+
+    C = []
+    D = []
+    r = []
+
+    # Acesta functie a fost gandita pe baza acestei explicatii
+    # https://www.tutorialspoint.com/what-are-the-following-steps-for-the-key-generation-of-des-in-information-security
+    # Prin shiftarea blockurilor
+    for i in range(28):
+        C.append(key[PC1_C[i]])
+    for i in range(28):
+        D.append(key[PC1_D[i]])
+    for i in range(0, 16):
+        if i in [0, 1, 8, 15]:
+            C = left_shift(C, 1)
+            D = left_shift(D, 1)
+        else:
+            C = left_shift(C, 2)
+            D = left_shift(D, 2)
+        CD = []
+        CD.extend(C)
+        CD.extend(D)
+        dummy = []
+        for i in range(48):
+            dummy.append(CD[PC2[i]])
+        r.append(dummy)
+    return r
+
+
+# IMPLEMENTAREA PROPRIU-ZIS
+# PENTRU ENCRYPT SI DECRYPT
 
 def get_bits(plaintext):
     text_bits = []
@@ -110,70 +227,9 @@ def decrypt(cipher, key_text):
 	i = 0
 	text_mess = ''
 	while i < len(bin_mess):
-		text_mess += bin_to_text(bin_mess[i:i+8])
+		text_mess += bin_2_str(bin_mess[i:i+8])
 		i = i+8
 	return text_mess.rstrip('\x00')
 
-
-def main():
-
-	ATTACK_SPACE = 18
-
-	# Keyle sa fie mai mici decat 2 ^ attckspace
-
-	key1 = b'\x05\x03\x01\x00\x00\x00\x00\x00'
-	key2 = b'\x06\x04\x02\x00\x00\x00\x00\x00'
-	plaintext = 'Hello world! :-)'
-
-	cipher = encrypt(encrypt(plaintext, bytes_to_string(key2)), bytes_to_string(key1))
-	print(cipher)
-
-	table = {}
-
-	# La 2DES vrei sa iti cresti space-ul
-	# La vremea aia asa era
-	# Outputul de la 1 merge in a 2-a
-	# Ce decrpitezi la dreapta e outputul de la stanga
-	# Daca iterezi si gasesti punctul in care sunt egale, ai spart algoritmul
-
-	print("Creating table for k1...")
-	for i in itertools.count(0):
-
-			# Convert the integer i to a series of 8 bytes.
-			key = ''.join([chr(i >> 8*j & 0xff) for j in range(0, 8)]).encode()
-			
-			# Encrypt the plaintext; this gives us the 'middle' value. We index the
-			# table by this middle value, and store the corresponding key.
-			table[encrypt(plaintext, bytes_to_string(key))] = key
-			
-			# The full search space is 2**64, but for this demo we only need 2**18.
-			# if i == 2 ** 64 - 1: 
-			if i == 2 ** ATTACK_SPACE - 1:
-				break
-
-	print("Searching for k2...")
-	for i in itertools.count(0):
-			
-			# Convert key, initialize cipher.
-			key = ''.join([chr(i >> 8*j & 0xff) for j in range(0, 8)]).encode()
-			 
-			# Decrypt the ciphertext to get a middle value. Check if the middle
-			# value is stored in the table. If it is, then we have found both
-			# keys.
-			mid = decrypt(cipher, bytes_to_string(key))
-			if mid in table:
-					# k1 = ' '.join(['%02x' % ord(x) for x in table[mid]])
-					# k2 = ' '.join(['%02x' % ord(x) for x in key])
-					# print("k1: %s\nk2: %s" % (k1, k2))
-					print(mid, table[mid], key)
-					break
-					
-			# This should not be necessary, but we don't want an infinite loop, so
-			# we will include it just in case.
-			# elif i == 2 ** 64 - 1:
-			elif i == 2 ** ATTACK_SPACE - 1:
-					print("Search failed.")
-					break
-
-if __name__ == "__main__":
-    main()
+# / IMPLEMENTAREA PROPRIU-ZIS
+# / PENTRU ENCRYPT SI DECRYPT
